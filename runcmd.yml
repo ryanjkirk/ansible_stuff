@@ -1,0 +1,12 @@
+# run a command using the shell module
+# required vars: cmd 
+# ex ansible-playbook runcmd.yml -i $invfile -u root -k -e "cmd=service pmta status"
+# author: ryk
+---
+- name: run a command 
+  hosts: all
+  gather_facts: no 
+  tasks:
+
+    - name: run the command
+      shell: "{{ cmd }}"

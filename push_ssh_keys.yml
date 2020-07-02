@@ -1,0 +1,30 @@
+# push ssh key to servers
+# required vars: pubkey 
+# ex ansible-playbook push_ssh_key.yml -i $invfile -k -e "pubkey=~/.ssh/id_rsa.pub"
+# author: ryk
+---
+- name:  push file
+  hosts: all
+  gather_facts: no 
+  tasks:
+
+    - name: ensure .ssh dir 
+      file:
+        path: ~/.ssh
+        mode: 0700
+        state: directory
+
+    - name: ensure authorized_keys file
+      file:
+        path: ~/.ssh/authorized_keys
+        mode: 0600
+        state: touch
+
+    - name: register pubkey as var
+      local_action: command cat "{{ pubkey }}"
+      register: pubkeyvar
+
+    - name: ensure pubkey in authorized_keys
+      lineinfile:
+        dest: ~/.ssh/authorized_keys
+        line: "{{ pubkeyvar.stdout }}"

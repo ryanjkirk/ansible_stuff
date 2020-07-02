@@ -1,0 +1,14 @@
+# install a package
+# required vars: pkg=pkgname
+# author: ryk
+# example: ansible-playbook install_pkg.yml -i invfile -u root -k -e "pkg=PowerMTA-4.5r10-201706121718"
+---
+- name: ensure package is installed
+  hosts: all
+  gather_facts: no
+  tasks:
+
+  - name: ensure package is installed
+    yum:
+      name: "{{ pkg }}" 
+      state: present

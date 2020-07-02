@@ -1,0 +1,16 @@
+# push a script and run it remotely
+# required vars: script
+# ex ansible-playbook runscript.yml -i $invfile -u root -k -e "script=/tmp/script1.sh arg1 arg2"
+# author: ryk
+---
+- name: run a script
+  hosts: all
+  gather_facts: no 
+  tasks:
+
+    - name: run the script
+      script: "{{ script }}"
+      register: output
+
+    - debug:
+        var: output 

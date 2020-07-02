@@ -1,0 +1,47 @@
+#!/usr/bin/expect
+# log in to a server as root
+# parameter $1 is hostname to connect to
+
+
+# set to 1 to log out instead of dropping to interactive 
+set test_login 1 ;
+
+# set to 1 to force conservative mode
+set force_conservative 0 ;
+
+if {$force_conservative} {
+    set send_slow {1 .1}
+    proc send {ignore arg} {
+        sleep .1
+        exp_send -s -- $arg
+    }
+}
+
+# hostname
+set host [lindex $argv 0]
+
+# login password
+#set pw [lindex $argv 1]
+#set pw {CURRENT_ROOT_PW}
+set pw {@Warrior*Kittenbeard3#}
+
+set timeout -1
+spawn $env(SHELL)
+match_max 100000
+
+# login
+expect "*\$ "
+send -- "ssh root@$host\r"
+expect "ssh root@$host\r
+*assword:*"
+send -- "$pw\r"
+expect "\r"
+expect "*"
+
+if { $test_login } {
+    send -- "exit\r"
+    expect "logout\r"
+    expect "Connection to $host closed.\r" ;
+} else {
+    interact ;
+}

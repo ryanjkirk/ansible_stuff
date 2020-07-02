@@ -1,0 +1,177 @@
+---
+# Manage root password and backdoor account
+# author: ryk
+# required vars: hosts, backdoor_state=[present|absent]
+# optional vars: setrootpw=yes to set the root password. Otherwise doesn't touch root.
+# ex: ansible-playbook manage_root_pw.yml -i ./el6 -bK -e "hosts=group1 backdoor_state=present"
+
+- name: manage backdoor and root passwords
+  hosts: "{{ hosts }}" 
+  gather_facts: no 
+
+  vars:
+    # set these vars manually based on hashes you generated above
+    backdoor_pwhash: $6$rounds=656000$U3GMhyhzThmwu7.m$1LWEeJIaaSTmX6YAbLmSe.9ga/YfzbvziKQ2/ev83WqodhSTSDjBBPKuIVdceR3IZLMkgHECVZIzdik2/cEAg/
+    root_pwhash: $6$rounds=656000$1.YqYCrq4kqggBvS$NYoHtcC1qSEiv0ZYOEUcF9i0lg3bf.sKylFvdQ0pfrbDftXux2QUKxNsAQ8QyLvbBtm0Ww9iR9r31A.kO6LWO/
+    root_pwhash_deb: $1$BVLL713z$4M5OJ6t8H8lKDcnLPydRL0
+    backdoor_pubkey: ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA4r9RFMZPh5GEBWf07oZzQgoPirhunK6N5sWdR3hsJZAqaldo0+z1uH5FpnwF2asG5qmXdFSX+7iWWi1PXuGdM4eDvKN6oMyOQfPPmiz7OTZ58aUH6N5ibVYFpSJph6lMXjC3Yy4rPBijON3w8OymbAdLsTf4655a9BsdXh2WBJzhcwT87xTcV33yzwUu0yMtJJBBtkawcrK36dIW+D+Wfr4yX+zTyLvIYP8DLnxf63uiWQHiiMHZtZDXRyTVW2R+g+uqNlSy9NiK6UWhuhW+JzX5mzgm9r3pwYqZUXS91SJqTEo36FAOaGXYbLZK91N6zIy9FFhYIDmf9DMyc62/+w== backdoor
+
+    # don't touch these vars
+    backdoor_dirstate: absent
+    backdoor_filestate: absent 
+
+  tasks:
+
+    - name: override backdoor state vars
+      set_fact:
+        backdoor_dirstate: directory
+        backdoor_filestate: touch
+      when: backdoor_state == "present"
+
+    - name: check if sudoers file already exists
+      stat:
+        path: /etc/sudoers.d/backdoor
+      register: backdoor_sudoers_file
+
+    - name: override backdoor_filestate from touch to present if files already exist for pure idempotency
+      set_fact:
+        backdoor_filestate: file 
+      when: backdoor_sudoers_file.stat.exists and backdoor_state == "present"
+
+    - name: check if EL distro, faster than gathering facts
+      stat:
+        path: /etc/redhat-release
+      register: el_file
+      ignore_errors: yes
+
+    - name: check if Debian
+      stat:
+        path: /etc/debian_version
+      register: deb_file
+      when: el_file.stat.exists == false
+      ignore_errors: yes
+
+    - name: var override - use md5 hash on debian
+      set_fact:
+        root_pwhash: "{{ root_pwhash_deb }}" 
+      when: deb_file.stat.exists
+      ignore_errors: yes
+  
+    - block:  
+
+      - name: check if we have ldap to manage admins group
+        command: grep admins /etc/group
+        register: admins_local_group_state
+        changed_when: false
+        ignore_errors: yes
+
+      - name: make sure libselinux-python is installed
+        yum:
+          name: libselinux-python
+          state: present
+
+      - name: ensure local admins group exists when not under ldap
+        group:
+          name: admins
+          gid: 11005
+          state: present 
+        when: admins_local_group_state.rc == 1
+
+      - name: mange backdoor local user 
+        user:
+          name: backdoor
+          comment: CHM Systems
+          group: admins
+          password: "{{ backdoor_pwhash }}" 
+          state: "{{ backdoor_state }}"
+
+      - name: ensure local admins group does not exist when not under ldap
+        group:
+          name: admins
+          gid: 11005
+          state: absent
+        when: admins_local_group_state.rc == 0 and backdoor_state == "absent"
+
+      - name: ensure /etc/sudoers is not immutable
+        command: chattr -i /etc/sudoers 
+
+      - name: ensure include in /etc/sudoers
+        lineinfile:
+          dest: /etc/sudoers
+          state: present 
+          line: "#includedir /etc/sudoers.d" 
+
+      - name: make /etc/sudoers temporarily immutable due to puppet concerns
+        command: chattr +i /etc/sudoers
+
+      - name: ensure /etc/sudoers.d in case it does not exist on older servers
+        file:
+          path: /etc/sudoers.d
+          state: directory
+          mode: 0750
+          owner: root
+          group: root
+  
+      - name: manage backdoor sudoers file
+        file:
+          path: /etc/sudoers.d/backdoor
+          state: "{{ backdoor_filestate }}"
+          mode: 0440
+          owner: root
+          group: root
+  
+      - name: manage contents of backdoor sudoers file
+        lineinfile:
+          dest: /etc/sudoers.d/backdoor
+          state: "{{ backdoor_state }}"
+          line: "{{ item }}"
+        with_items:
+          - 'Defaults:backdoor !requiretty'
+          - 'backdoor        ALL=(ALL)       NOPASSWD: ALL'
+
+      - name: manage backdoor .ssh dir
+        file:
+          state: "{{ backdoor_dirstate }}"
+          path: /home/backdoor/.ssh
+          mode: 0700
+          owner: backdoor
+          group: admins
+
+      - name: check if .ssh dir exists to avoid next task from failing 
+        stat:
+          path: /home/backdoor/.ssh 
+        register: backdoor_ssh_dir
+
+      - name: manage backdoor authorized_keys file
+        file:
+          state: "{{ backdoor_filestate }}" 
+          path: /home/backdoor/.ssh/authorized_keys
+          owner: backdoor
+          group: admins
+          mode: 0600
+        when: backdoor_ssh_dir.stat.exists 
+
+      - name: manage backdoor autornized_keys file contents
+        lineinfile:
+          state: "{{ backdoor_state }}"
+          dest: /home/backdoor/.ssh/authorized_keys
+          line: "{{ backdoor_pubkey }}" 
+          
+      when: backdoor_state == "present" or backdoor_state == "absent"
+
+    - name: ensure no backdoor homedir
+      file:
+        state: absent
+        dest: /home/backdoor
+      when: backdoor_state == "absent"
+
+    - name: manage root pw 
+      user:
+        name: root 
+        group: root 
+        password: "{{ root_pwhash }}" 
+      when: setrootpw is defined | default(false)
+
+    - name: cleanup task - set /etc/sudoers to non-immutable
+      command: chattr -i /etc/sudoers
+      when: backdoor_state == "absent"

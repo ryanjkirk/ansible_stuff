@@ -1,0 +1,25 @@
+# push a file to a server
+# required vars: srcpath, destpath
+# optional vars: boolean: is_script=true
+# ex ansible-playbook pushfile.yml -i $invfile -u root -k -e "srcpath=./script.sh destpath=/tmp/script.sh is_script=true"
+# author: ryk
+---
+- name:  push file
+  hosts: all
+  gather_facts: no 
+  tasks:
+
+    - name: set default mode
+      set_fact:
+        filemode: 0644
+
+    - name: set mode to executable
+      set_fact:
+        filemode: 0755
+      when: is_script | default(false)
+
+    - name: copy file
+      copy:
+        src: "{{ srcpath }}"
+        dest: "{{ destpath }}"
+        mode: "{{ filemode }}"

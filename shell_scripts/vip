@@ -1,0 +1,59 @@
+#!/bin/bash
+# author: ryk
+
+status="$1"
+
+# set these manually for your server
+okfile="/opt/atlassian/jira/atlassian-jira/serverstatus.html"
+user="jira"
+group="jira"
+
+#/ Usage: vip [up|down|status]
+#/ Description: set a marker file to be read by a LB health check
+#/ Examples: vip up; vip down; vip status
+#/ Options:
+#/   --help: Display this help message
+
+function usage {
+    grep '^#/' "$0" | cut -c4-
+    exit 0
+}
+expr "$*" : ".*--help" > /dev/null && usage
+
+
+# check current VIP status
+grep -q "OK" $okfile > /dev/null 2>&1
+result=$?
+
+if [[ $result == 0 ]]; then
+    vipstatus="up"
+  else
+    vipstatus="down"
+fi
+
+
+# parameter logic
+if [[ $status == up ]]; then
+    keyword="OK"
+  elif [[ $status == down ]]; then
+    keyword=""
+  elif [[ $status == status ]]; then
+    echo "VIP currently should be $vipstatus"
+  else
+    echo "invalid parameter; try $0 --help"
+    exit 1
+fi
+
+if [[ ! $status == status ]]; then
+cat > $okfile << EOF
+<html>
+<head>
+<body>
+<p>$keyword</p>
+</body>
+</html>
+EOF
+fi
+
+# in case it gets run as root
+chown $user:$group $okfile

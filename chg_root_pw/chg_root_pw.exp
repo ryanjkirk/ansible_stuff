@@ -1,0 +1,69 @@
+#!/usr/bin/expect
+# log in as root to old servers that don't have python and can't run ansible to change the root password
+
+
+# set to 1 to just echo the password as a test (escape special chars)
+set echo_newpw 0 ; # OR
+# set to 1 to reset root password
+set reset_root_pw 1 ;
+
+# set to 1 to force conservative mode
+set force_conservative 0 ;
+
+if {$force_conservative} {
+    set send_slow {1 .1}
+    proc send {ignore arg} {
+        sleep .1
+        exp_send -s -- $arg
+    }
+}
+
+# hostname
+set host [lindex $argv 0]
+
+# login password
+#set pw [lindex $argv 1]
+#set pw {CURRENT_ROOT_PW}
+set pw {XXXXXXXXXXXXXX}
+
+# new password
+#set newpw [lindex $argv 2]
+#set newpw {NEW_ROOT_PW}
+set newpw {XXXXXXXXXXXXXXX}
+
+set timeout -1
+spawn $env(SHELL)
+match_max 100000
+
+# test echo pw
+if { $echo_newpw } {
+    send -- "echo $newpw\r"
+interact
+}
+
+# login
+expect "*\$ "
+send -- "ssh root@$host\r"
+expect "ssh root@$host\r
+*assword:*"
+send -- "$pw\r"
+expect "\r"
+expect "*#*"
+
+if { $reset_root_pw } {
+    send -- "passwd\r"
+    expect "passwd\r"
+#   expect "Changing password for user root.\r"
+    expect "*ew*password:"
+    send "$newpw\r"
+    expect "Retype new*password:"
+    send "$newpw\r"
+    expect "passwd:*updated successfully*\r"
+    expect "*# "
+    send -- "exit\r"
+    expect "exit\r"
+    expect "logout\r"
+    expect "Connection to $host closed." ;
+} else {
+    interact ;
+}
