@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# script to emulate Solaris ping
+# author: ryk
+
+host=$1
+
+function dotheping {
+ping -c 1 -W 1 $host > /dev/null
+result=$?
+
+if [[ $result == 0 ]]; then
+    echo $host is alive
+  else echo $host is dead
+fi
+}
+
+function doitforever {
+    while true; do
+        dotheping
+        sleep 1
+    done
+}
+
+if [[ $2 == "forever" ]]; then
+    doitforever
+  else
+    dotheping
+fi
